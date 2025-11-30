@@ -17,6 +17,16 @@ const PROJECT_KEY = process.env.PROJECT_KEY;
 const authToken = Buffer.from(`${JIRA_EMAIL}:${JIRA_API_TOKEN}`).toString("base64");
 
 /* ----------------------------------------
+   ROOT ROUTE (IMPORTANT FOR RENDER)
+-----------------------------------------*/
+app.get("/", (req, res) => {
+    res.json({
+        status: "ok",
+        message: "Jira backend is running on Render 🚀"
+    });
+});
+
+/* ----------------------------------------
    1) CREATE TICKET
 -----------------------------------------*/
 app.post("/create-ticket", async (req, res) => {
@@ -92,8 +102,11 @@ app.post("/get-ticket", async (req, res) => {
     }
 });
 
+/* ----------------------------------------
+   SERVER START
+-----------------------------------------*/
+const PORT = process.env.PORT || 3000;   // REQUIRED FOR RENDER
 
-// SERVER START
-app.listen(3000, () => {
-    console.log("🚀 Server running on port 3000");
+app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
 });
