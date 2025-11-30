@@ -7,43 +7,70 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// Add a simple request logger to verify requests reach this process
+app.use((req, res, next) => {
+    console.log(`[REQ] ${req.method} ${req.path}`);
+    next();
+});
+
 // ENV VARIABLES
 const JIRA_BASE = process.env.JIRA_BASE;
 const JIRA_EMAIL = process.env.JIRA_EMAIL;
 const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN;
 const PROJECT_KEY = process.env.PROJECT_KEY;
 
-// Create Base64 token
+// Create Base64 auth token
 const authToken = Buffer.from(`${JIRA_EMAIL}:${JIRA_API_TOKEN}`).toString("base64");
 
 /* ----------------------------------------
-   ROOT ROUTE (IMPORTANT FOR RENDER)
+   HEALTH CHECK
 -----------------------------------------*/
+// Log when the health route is registered (helps confirm this file was loaded)
+console.log('Registering GET / (health check)');
 app.get("/", (req, res) => {
     res.json({
         status: "ok",
-        message: "Jira backend is running on Render 🚀"
+        message: "Jira backend running 🚀"
     });
 });
 
 /* ----------------------------------------
-   1) CREATE TICKET
+   1) CREATE TICKET (ADF description)
 -----------------------------------------*/
 app.post("/create-ticket", async (req, res) => {
     try {
         const { title, description, priority } = req.body;
 
+        const payload = {
+            fields: {
+                project: { key: PROJECT_KEY },
+                summary: title,
+
+                // ADF DESCRIPTION (REQUIRED BY JIRA CLOUD)
+                description: {
+                    "type": "doc",
+                    "version": 1,
+                    "content": [
+                        {
+                            "type": "paragraph",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": description
+                                }
+                            ]
+                        }
+                    ]
+                },
+
+                issuetype: { name: "Task" },
+                priority: { name: priority }
+            }
+        };
+
         const response = await axios.post(
             `${JIRA_BASE}/rest/api/3/issue`,
-            {
-                fields: {
-                    project: { key: PROJECT_KEY },
-                    summary: title,
-                    description: description,
-                    issuetype: { name: "Task" },
-                    priority: { name: priority }
-                }
-            },
+            payload,
             {
                 headers: {
                     "Authorization": `Basic ${authToken}`,
@@ -59,7 +86,8 @@ app.post("/create-ticket", async (req, res) => {
         });
 
     } catch (err) {
-        console.log(err.response?.data || err.message);
+        console.log("CREATE TICKET ERROR:", err.response?.data || err.message);
+
         res.status(500).json({
             success: false,
             error: err.response?.data || err.message
@@ -67,8 +95,9 @@ app.post("/create-ticket", async (req, res) => {
     }
 });
 
+
 /* ----------------------------------------
-   2) GET TICKET
+   2) GET TICKET STATUS
 -----------------------------------------*/
 app.post("/get-ticket", async (req, res) => {
     try {
@@ -85,16 +114,20 @@ app.post("/get-ticket", async (req, res) => {
         );
 
         const data = response.data;
-        res.json({
+
+        return res.json({
             success: true,
             key: ticketKey,
             summary: data.fields.summary,
             status: data.fields.status.name,
-            assignee: data.fields.assignee ? data.fields.assignee.displayName : "Unassigned"
+            assignee: data.fields.assignee
+                ? data.fields.assignee.displayName
+                : "Unassigned"
         });
 
     } catch (err) {
-        console.log(err.response?.data || err.message);
+        console.log("GET TICKET ERROR:", err.response?.data || err.message);
+
         res.status(500).json({
             success: false,
             error: err.response?.data || err.message
@@ -103,10 +136,18 @@ app.post("/get-ticket", async (req, res) => {
 });
 
 /* ----------------------------------------
-   SERVER START
+   404 Fallback
 -----------------------------------------*/
-const PORT = process.env.PORT || 3000;   // REQUIRED FOR RENDER
+app.use((req, res) => {
+    console.log(`[404] ${req.method} ${req.path}`);
+    res.status(404).json({ success: false, error: "Not Found" });
+});
 
+
+/* ----------------------------------------
+   START SERVER
+-----------------------------------------*/
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
 });
